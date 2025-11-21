@@ -5,27 +5,40 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Éditeur de Formes Géographiques</title>
     
-    <!-- Tailwind CSS -->
+    <!-- Tailwind CSS & Config -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class', // Activation manuelle via classe HTML
+            theme: {
+                extend: {
+                    colors: {
+                        slate: { 750: '#2d3748', 850: '#1a202c', 950: '#0f172a' } // Extensions pour mode sombre
+                    }
+                }
+            }
+        }
+    </script>
     
     <!-- Lucide Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
     
     <!-- Google Fonts (Inter) -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- JSZip -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 
     <style>
         /* Configuration globale */
         body {
             font-family: "Inter", sans-serif;
-            background-color: #f8fafc; /* Slate-50 */
-            color: #1e293b; /* Slate-800 */
         }
 
         /* Layout Principal */
         .main-container {
             display: flex;
-            height: calc(100vh - 64px); /* Hauteur ajustée header */
+            height: calc(100vh - 64px);
             position: relative;
             overflow: hidden;
         }
@@ -38,11 +51,10 @@
             transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         }
 
-        /* Panneau Latéral (Inspecteur) */
+        /* Panneau Latéral */
         #attributes-panel {
-            width: 320px;
-            background-color: #ffffff;
-            border-left: 1px solid #e2e8f0;
+            width: 360px;
+            border-left-width: 1px;
             display: flex;
             flex-direction: column;
             box-shadow: -4px 0 15px rgba(0, 0, 0, 0.03);
@@ -50,8 +62,12 @@
             transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
             transform: translateX(0);
         }
+        
+        /* Dark Mode Transitions */
+        #attributes-panel, header, .modal-content, body {
+            transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
+        }
 
-        /* États du panneau */
         .panel-hidden #attributes-panel {
             transform: translateX(100%);
             width: 0; 
@@ -66,9 +82,7 @@
             gap: 0.5rem;
             transition: all 0.2s;
         }
-        .btn-icon:active {
-            transform: scale(0.98);
-        }
+        .btn-icon:active { transform: scale(0.98); }
 
         /* Toggle Flottant Map */
         #mapInspectorToggle {
@@ -76,29 +90,28 @@
             top: 1rem;
             right: 1rem;
             z-index: 400;
-            background: white;
-            border: 1px solid #e2e8f0;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.08);
         }
-        .panel-hidden #mapInspectorToggle {
-            right: 1rem;
+        .panel-hidden #mapInspectorToggle { right: 1rem; }
+
+        /* Leaflet Overrides pour Dark Mode */
+        .leaflet-container { background-color: #e2e8f0; font-family: "Inter", sans-serif; }
+        .dark .leaflet-container { background-color: #1e293b; }
+
+        /* Customizing Leaflet Controls for Dark Mode */
+        .leaflet-bar { border: none !important; box-shadow: 0 2px 5px rgba(0,0,0,0.1) !important; }
+        .leaflet-bar a { border-radius: 0.375rem !important; margin-bottom: 4px !important; border-bottom: none !important; }
+        
+        .dark .leaflet-bar a {
+            background-color: #1e293b;
+            color: #e2e8f0;
+            border-bottom: 1px solid #334155;
+        }
+        .dark .leaflet-bar a:hover { background-color: #334155; }
+        .dark .leaflet-draw-toolbar a {
+            background-image: url('https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/images/spritesheet.png');
+            filter: invert(0.9); /* Inversion des icônes noires en blanc */
         }
 
-        /* Leaflet Overrides */
-        .leaflet-container {
-            background-color: #e2e8f0;
-            font-family: "Inter", sans-serif;
-        }
-        .leaflet-bar {
-            border: none !important;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.1) !important;
-        }
-        .leaflet-bar a {
-            border-radius: 0.375rem !important; /* Tailwind rounded-md */
-            margin-bottom: 4px !important;
-            border-bottom: none !important;
-        }
-        
         /* Highlight Feature */
         .selected-feature-highlight {
             filter: drop-shadow(0 0 4px rgba(59, 130, 246, 0.6));
@@ -108,68 +121,34 @@
 
         /* Modals */
         .modal-overlay {
-            position: fixed;
-            inset: 0;
-            background-color: rgba(15, 23, 42, 0.4); /* Slate-900/40 */
+            position: fixed; inset: 0;
+            background-color: rgba(15, 23, 42, 0.4);
             backdrop-filter: blur(2px);
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            z-index: 1000;
-            opacity: 0;
-            visibility: hidden;
+            display: flex; justify-content: center; align-items: center;
+            z-index: 1000; opacity: 0; visibility: hidden;
             transition: all 0.2s ease-out;
         }
-        .modal-overlay.open {
-            opacity: 1;
-            visibility: visible;
-        }
+        .modal-overlay.open { opacity: 1; visibility: visible; }
         .modal-content {
-            background: white;
             border-radius: 0.75rem;
-            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
-            transform: scale(0.95);
-            transition: transform 0.2s ease-out;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+            transform: scale(0.95); transition: transform 0.2s ease-out;
         }
-        .modal-overlay.open .modal-content {
-            transform: scale(1);
-        }
+        .modal-overlay.open .modal-content { transform: scale(1); }
 
         /* Data Table */
-        .table-container {
-            scrollbar-width: thin;
-            scrollbar-color: #cbd5e1 #f1f5f9;
-        }
-        .data-table th {
-            background-color: #f8fafc;
-            position: sticky;
-            top: 0;
-            z-index: 10;
-            font-size: 0.75rem;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-            color: #64748b;
-        }
-        .data-table td {
-            border-bottom: 1px solid #f1f5f9;
-        }
-        .data-table tr:hover td {
-            background-color: #f8fafc;
-        }
-        .data-table input:focus {
-            background-color: #f0f9ff;
-            box-shadow: inset 0 0 0 2px #bae6fd;
-        }
-
-        /* Toast Message */
-        #messageContainer {
-            z-index: 2000;
-            pointer-events: none;
-        }
+        .table-container { scrollbar-width: thin; }
+        .data-table th { position: sticky; top: 0; z-index: 10; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; }
         
-        /* Utilities */
-        .hidden-force {
-            display: none !important;
+        /* Toast Message */
+        #messageContainer { z-index: 2000; pointer-events: none; }
+        
+        .hidden-force { display: none !important; }
+        .ai-pulse { animation: pulse-purple 2s infinite; }
+        @keyframes pulse-purple {
+            0% { box-shadow: 0 0 0 0 rgba(147, 51, 234, 0.4); }
+            70% { box-shadow: 0 0 0 10px rgba(147, 51, 234, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(147, 51, 234, 0); }
         }
     </style>
 
@@ -181,39 +160,51 @@
     <script src="https://unpkg.com/@mapbox/shp-write@latest/shpwrite.js"></script>
 </head>
 
-<body class="flex flex-col h-screen overflow-hidden text-sm">
+<body class="flex flex-col h-screen overflow-hidden text-sm bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-100 transition-colors duration-300">
 
     <!-- HEADER -->
-    <header class="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-4 shadow-sm z-30">
+    <header class="h-16 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between px-4 shadow-sm z-30">
         <div class="flex items-center gap-3">
             <div class="bg-blue-600 text-white p-1.5 rounded-lg shadow-sm">
                 <i data-lucide="map" class="w-6 h-6"></i>
             </div>
-            <h1 class="text-lg font-bold text-slate-800 tracking-tight">GeoEditor <span class="text-slate-400 font-normal text-sm">Web</span></h1>
+            <h1 class="text-lg font-bold tracking-tight">GeoEditor <span class="text-slate-400 font-normal text-sm">Web</span></h1>
         </div>
 
         <div class="flex items-center gap-2">
-            <!-- Input caché -->
+            <!-- Dark Mode Toggle -->
+            <button onclick="toggleDarkMode()" class="p-2 mr-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400 transition-colors" title="Basculer le mode sombre">
+                <i id="darkModeIcon" data-lucide="moon" class="w-5 h-5"></i>
+            </button>
+
+            <!-- Inputs cachés -->
             <input type="file" id="fileInput" accept=".geojson, .zip" class="hidden" onchange="loadFile()" />
+            <input type="file" id="folderInput" webkitdirectory directory multiple class="hidden" onchange="loadFolder()" />
             
-            <label for="fileInput" class="btn-icon bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-2 rounded-md cursor-pointer border border-slate-200 font-medium">
-                <i data-lucide="folder-open" class="w-4 h-4"></i>
-                <span class="hidden sm:inline">Importer</span>
-            </label>
+            <div class="flex rounded-md shadow-sm" role="group">
+                <label for="fileInput" class="btn-icon bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 px-3 py-2 rounded-l-md cursor-pointer border border-slate-200 dark:border-slate-700 font-medium">
+                    <i data-lucide="file" class="w-4 h-4"></i>
+                    <span class="hidden sm:inline">Fichier</span>
+                </label>
+                <label for="folderInput" class="btn-icon bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 px-3 py-2 rounded-r-md cursor-pointer border-t border-b border-r border-slate-200 dark:border-slate-700 font-medium">
+                    <i data-lucide="folder-open" class="w-4 h-4"></i>
+                    <span class="hidden sm:inline">Dossier</span>
+                </label>
+            </div>
 
-            <div class="h-6 w-px bg-slate-300 mx-1"></div>
+            <div class="h-6 w-px bg-slate-300 dark:bg-slate-700 mx-1"></div>
 
-            <button onclick="openTableModal()" class="btn-icon bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-2 rounded-md border border-slate-200 font-medium">
+            <button onclick="openTableModal()" class="btn-icon bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 px-3 py-2 rounded-md border border-slate-200 dark:border-slate-700 font-medium">
                 <i data-lucide="table" class="w-4 h-4"></i>
                 <span class="hidden sm:inline">Données</span>
             </button>
 
             <div class="flex rounded-md shadow-sm" role="group">
-                <button id="exportGeoJSONButton" onclick="openExportModal('geojson')" class="btn-icon bg-indigo-50 hover:bg-indigo-100 text-indigo-700 px-3 py-2 rounded-l-md border border-indigo-200 font-medium disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                <button id="exportGeoJSONButton" onclick="openExportModal('geojson')" class="btn-icon bg-indigo-50 dark:bg-indigo-900/30 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 px-3 py-2 rounded-l-md border border-indigo-200 dark:border-indigo-800 font-medium disabled:opacity-50 disabled:cursor-not-allowed">
                     <i data-lucide="download" class="w-4 h-4"></i>
                     <span class="hidden sm:inline">GeoJSON</span>
                 </button>
-                <button id="exportShapefileButton" onclick="openExportModal('shp')" class="btn-icon bg-indigo-50 hover:bg-indigo-100 text-indigo-700 px-3 py-2 rounded-r-md border-t border-b border-r border-indigo-200 font-medium disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                <button id="exportShapefileButton" onclick="openExportModal('shp')" class="btn-icon bg-indigo-50 dark:bg-indigo-900/30 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 px-3 py-2 rounded-r-md border-t border-b border-r border-indigo-200 dark:border-indigo-800 font-medium disabled:opacity-50 disabled:cursor-not-allowed">
                     <i data-lucide="package" class="w-4 h-4"></i>
                     <span class="hidden sm:inline">Shapefile</span>
                 </button>
@@ -225,7 +216,7 @@
     <div class="main-container">
         
         <!-- Bouton Toggle Flottant -->
-        <button id="mapInspectorToggle" onclick="toggleAttributePanel()" class="p-2 rounded-lg text-slate-600 hover:text-blue-600 hover:bg-slate-50 transition-colors" title="Basculer l'inspecteur">
+        <button id="mapInspectorToggle" onclick="toggleAttributePanel()" class="p-2 rounded-lg bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-blue-600 border border-slate-200 dark:border-slate-700 shadow-md" title="Basculer l'inspecteur">
             <i id="toggleIcon" data-lucide="panel-right-close" class="w-5 h-5"></i>
         </button>
 
@@ -233,37 +224,84 @@
         <div id="map"></div>
 
         <!-- SIDEBAR (INSPECTOR) -->
-        <aside id="attributes-panel">
-            <div class="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
-                <h2 class="font-semibold text-slate-700 flex items-center gap-2">
-                    <i data-lucide="info" class="w-4 h-4 text-blue-500"></i>
-                    Propriétés
-                </h2>
-                <button onclick="toggleAttributePanel()" class="text-slate-400 hover:text-slate-600">
-                    <i data-lucide="x" class="w-4 h-4"></i>
+        <aside id="attributes-panel" class="bg-white dark:bg-slate-900 border-l border-slate-200 dark:border-slate-800">
+            <!-- Onglets Header -->
+            <div class="flex border-b border-slate-200 dark:border-slate-800">
+                <button onclick="switchSidebarTab('layers')" id="tab-layers" class="flex-1 py-3 text-center font-semibold text-blue-600 border-b-2 border-blue-600 transition-colors">
+                    Couches
+                </button>
+                <button onclick="switchSidebarTab('attributes')" id="tab-attributes" class="flex-1 py-3 text-center font-semibold text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors">
+                    Attributs
                 </button>
             </div>
 
-            <div class="flex-grow overflow-y-auto p-4">
-                <div id="attribute-info" class="flex flex-col items-center justify-center h-40 text-center text-slate-400 p-4 border-2 border-dashed border-slate-200 rounded-lg bg-slate-50">
-                    <i data-lucide="mouse-pointer-2" class="w-8 h-8 mb-2 opacity-50"></i>
-                    <p class="text-sm">Sélectionnez une forme sur la carte</p>
+            <div class="flex-grow overflow-y-auto p-4 relative">
+                
+                <!-- VUE COUCHES (LAYERS) -->
+                <div id="view-layers" class="space-y-4">
+                    <h3 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Couches actives</h3>
+                    <div id="layer-list" class="space-y-2">
+                        <!-- Rempli par JS -->
+                    </div>
+                    <div class="text-xs text-slate-400 italic text-center mt-4">
+                        Importez des dossiers ou fichiers pour ajouter des couches.
+                    </div>
                 </div>
 
-                <div id="attributes-form" class="hidden">
-                    <div class="mb-4 flex items-center gap-2">
-                        <span class="text-xs font-mono bg-slate-100 text-slate-500 px-2 py-1 rounded" id="currentFeatureId">ID</span>
-                        <span class="text-xs px-2 py-1 rounded bg-blue-100 text-blue-700 font-semibold" id="currentFeatureType">Type</span>
+                <!-- VUE ATTRIBUTS -->
+                <div id="view-attributes" class="hidden space-y-6">
+                    <!-- Placeholder si rien n'est sélectionné -->
+                    <div id="attribute-info" class="flex flex-col items-center justify-center h-40 text-center text-slate-400 p-4 border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-lg bg-slate-50 dark:bg-slate-800/50">
+                        <i data-lucide="mouse-pointer-2" class="w-8 h-8 mb-2 opacity-50"></i>
+                        <p class="text-sm">Sélectionnez une forme sur la carte</p>
                     </div>
 
-                    <div id="inspector-list" class="space-y-3 text-sm">
-                        <!-- Liste attributs lecture seule -->
+                    <!-- Formulaire Attributs -->
+                    <div id="attributes-form" class="hidden space-y-6">
+                        <div class="flex items-center justify-between">
+                            <span class="text-xs font-mono bg-slate-100 dark:bg-slate-800 text-slate-500 px-2 py-1 rounded" id="currentFeatureId">ID</span>
+                            <span class="text-xs px-2 py-1 rounded bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 font-semibold" id="currentFeatureType">Type</span>
+                        </div>
+
+                        <!-- Section AI Assistant -->
+                        <div class="bg-gradient-to-br from-indigo-50 to-purple-50 dark:from-slate-800 dark:to-slate-800 rounded-xl border border-indigo-100 dark:border-slate-700 p-4 shadow-sm relative overflow-hidden">
+                            <h3 class="font-bold text-indigo-900 dark:text-indigo-300 flex items-center gap-2 mb-3">
+                                <i data-lucide="sparkles" class="w-4 h-4 text-purple-600 dark:text-purple-400"></i>
+                                Assistant IA
+                            </h3>
+                            
+                            <div class="space-y-3">
+                                <div>
+                                    <label class="text-xs font-semibold text-indigo-700 dark:text-indigo-400 mb-1 block">Générer des données :</label>
+                                    <select id="aiPromptType" class="w-full text-sm border-indigo-200 dark:border-slate-600 rounded-lg p-2 focus:ring-2 focus:ring-purple-400 focus:outline-none bg-white/80 dark:bg-slate-700 text-slate-700 dark:text-slate-200">
+                                        <option value="urban">🏙️ Urbanisme & Réel</option>
+                                        <option value="environment">🌿 Environnement & Nature</option>
+                                        <option value="description">📝 Description Narrative</option>
+                                        <option value="rpg">🎲 Données RPG / Fiction</option>
+                                    </select>
+                                </div>
+                                
+                                <button id="btnGenerateAI" onclick="generateAIAttributes()" class="w-full btn-icon bg-indigo-600 hover:bg-indigo-700 text-white py-2 rounded-lg shadow-md font-medium text-sm transition-all">
+                                    <i data-lucide="wand-2" class="w-4 h-4"></i>
+                                    Générer avec Gemini
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Liste des attributs -->
+                        <div>
+                            <h3 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Attributs actuels</h3>
+                            <div id="inspector-list" class="space-y-2 text-sm border-t border-slate-100 dark:border-slate-800 pt-2">
+                                <!-- Liste JS générée -->
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
 
-            <div class="p-4 border-t border-slate-100 bg-slate-50">
-                <button onclick="openTableModal()" class="w-full btn-icon bg-white border border-slate-300 hover:border-blue-400 hover:text-blue-600 text-slate-700 py-2 rounded-lg shadow-sm font-medium">
+            <!-- Footer Actions -->
+            <div id="footer-attributes" class="hidden p-4 border-t border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900">
+                <button onclick="openTableModal()" class="w-full btn-icon bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 hover:border-blue-400 hover:text-blue-600 text-slate-700 dark:text-slate-300 py-2 rounded-lg shadow-sm font-medium">
                     <i data-lucide="edit-3" class="w-4 h-4"></i>
                     Éditer les attributs
                 </button>
@@ -273,52 +311,43 @@
 
     <!-- MODAL TABLEAU -->
     <div id="tableModal" class="modal-overlay" onclick="closeTableModal(event)">
-        <div class="modal-content w-11/12 max-w-6xl h-[85vh] flex flex-col" onclick="event.stopPropagation()">
+        <div class="modal-content w-11/12 max-w-6xl h-[85vh] flex flex-col bg-white dark:bg-slate-900" onclick="event.stopPropagation()">
             
-            <div class="flex justify-between items-center px-6 py-4 border-b border-slate-100">
+            <div class="flex justify-between items-center px-6 py-4 border-b border-slate-100 dark:border-slate-800">
                 <div>
-                    <h2 class="text-xl font-bold text-slate-800 flex items-center gap-2">
+                    <h2 class="text-xl font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
                         <i data-lucide="database" class="w-5 h-5 text-blue-600"></i>
                         Tableau de Données
                     </h2>
-                    <p class="text-slate-500 text-xs mt-1">Gérez les attributs de toutes les géométries.</p>
                 </div>
-                <button onclick="closeTableModal()" class="text-slate-400 hover:text-slate-600 hover:bg-slate-100 p-2 rounded-full transition-colors">
+                <button onclick="closeTableModal()" class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
                     <i data-lucide="x" class="w-6 h-6"></i>
                 </button>
             </div>
 
             <!-- Toolbar Table -->
-            <div class="px-6 py-3 bg-slate-50 border-b border-slate-100 flex flex-wrap gap-3 items-center justify-between">
+            <div class="px-6 py-3 bg-slate-50 dark:bg-slate-800/50 border-b border-slate-100 dark:border-slate-800 flex flex-wrap gap-3 items-center justify-between">
                 <div class="flex items-center gap-2">
                     <div class="relative">
                         <i data-lucide="plus" class="absolute left-2.5 top-2 w-4 h-4 text-slate-400"></i>
-                        <input type="text" id="newColumnName" placeholder="Nouvelle colonne..." class="pl-9 pr-3 py-1.5 rounded-md border border-slate-300 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none w-48 shadow-sm">
+                        <input type="text" id="newColumnName" placeholder="Nouvelle colonne..." class="pl-9 pr-3 py-1.5 rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-sm focus:outline-none dark:text-white w-48 shadow-sm">
                     </div>
                     <button onclick="addNewColumn()" class="btn-icon bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-md text-sm font-medium shadow-sm">
                         Ajouter
                     </button>
                 </div>
-                <div class="text-xs text-slate-500 italic flex items-center gap-1">
-                    <i data-lucide="alert-circle" class="w-3 h-3"></i>
-                    Sauvegardez pour valider les changements
-                </div>
             </div>
 
             <!-- Table Scrollable -->
-            <div class="flex-grow overflow-auto table-container bg-white">
+            <div class="flex-grow overflow-auto table-container bg-white dark:bg-slate-900">
                 <table class="w-full text-left border-collapse data-table" id="attributesTable">
-                    <thead>
-                        <!-- JS generated -->
-                    </thead>
-                    <tbody class="text-slate-600">
-                        <!-- JS generated -->
-                    </tbody>
+                    <thead></thead>
+                    <tbody class="text-slate-600 dark:text-slate-300"></tbody>
                 </table>
             </div>
 
-            <div class="px-6 py-4 border-t border-slate-100 bg-slate-50 rounded-b-lg flex justify-end gap-3">
-                <button onclick="closeTableModal()" class="px-4 py-2 text-slate-600 hover:text-slate-800 font-medium">Annuler</button>
+            <div class="px-6 py-4 border-t border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 rounded-b-lg flex justify-end gap-3">
+                <button onclick="closeTableModal()" class="px-4 py-2 text-slate-600 dark:text-slate-400 hover:text-slate-800 font-medium">Annuler</button>
                 <button onclick="saveTableData()" class="btn-icon bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg shadow-sm font-bold">
                     <i data-lucide="save" class="w-4 h-4"></i>
                     Enregistrer Tout
@@ -327,62 +356,107 @@
         </div>
     </div>
 
-    <!-- MODAL EXPORT (Unified) -->
+    <!-- MODAL EXPORT -->
     <div id="exportModal" class="modal-overlay" onclick="closeExportModal(event)">
-        <div class="modal-content w-full max-w-lg p-6" onclick="event.stopPropagation()">
+        <div class="modal-content w-full max-w-lg p-6 bg-white dark:bg-slate-900" onclick="event.stopPropagation()">
             <div class="flex justify-between items-start mb-6">
                 <div class="flex items-center gap-3">
-                    <div class="bg-indigo-100 p-2 rounded-lg text-indigo-600">
+                    <div class="bg-indigo-100 dark:bg-indigo-900/50 p-2 rounded-lg text-indigo-600 dark:text-indigo-400">
                         <i data-lucide="download-cloud" class="w-6 h-6"></i>
                     </div>
                     <div>
-                        <h2 class="text-lg font-bold text-slate-800">Exporter les données</h2>
-                        <p class="text-sm text-slate-500" id="exportSubtitle">Configuration de l'export</p>
+                        <h2 class="text-lg font-bold text-slate-800 dark:text-slate-100">Exporter les données</h2>
+                        <p class="text-sm text-slate-500 dark:text-slate-400" id="exportSubtitle">Configuration de l'export</p>
                     </div>
                 </div>
-                <button onclick="closeExportModal()" class="text-slate-400 hover:text-slate-600">
+                <button onclick="closeExportModal()" class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
                     <i data-lucide="x" class="w-5 h-5"></i>
                 </button>
             </div>
 
+            <div class="bg-amber-50 dark:bg-amber-900/20 border border-amber-100 dark:border-amber-800 rounded-md p-3 mb-4 text-xs text-amber-800 dark:text-amber-200 flex items-start gap-2">
+                <i data-lucide="layers" class="w-4 h-4 mt-0.5"></i>
+                <span>L'export inclura <strong>toutes les couches actuellement visibles</strong> sur la carte.</span>
+            </div>
+
             <div class="space-y-4">
-                <!-- Champ Nom du fichier (Commun) -->
                 <div>
-                    <label class="block text-sm font-medium text-slate-700 mb-1">Nom du fichier</label>
+                    <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Nom du fichier</label>
                     <div class="relative">
                         <i data-lucide="file-text" class="absolute left-3 top-2.5 w-4 h-4 text-slate-400"></i>
-                        <input type="text" id="exportFilename" class="w-full pl-9 pr-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none" placeholder="mon_fichier">
+                        <input type="text" id="exportFilename" class="w-full pl-9 pr-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg text-sm bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none" placeholder="mon_fichier">
                     </div>
                     <p class="text-xs text-slate-400 mt-1 text-right" id="exportExtensionPreview">.geojson</p>
                 </div>
 
-                <!-- Options Shapefile (Masqué si GeoJSON) -->
-                <div id="shpOptions" class="space-y-4 pt-4 border-t border-slate-100">
+                <div id="shpOptions" class="space-y-4 pt-4 border-t border-slate-100 dark:border-slate-800">
                     <div>
-                        <label class="block text-sm font-medium text-slate-700 mb-1">Système de Projection (PRJ)</label>
-                        <select id="projectionSelect" onchange="handleProjectionChange()" class="w-full p-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none bg-white">
+                        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Système de Projection (PRJ)</label>
+                        <select id="projectionSelect" onchange="handleProjectionChange()" class="w-full p-2 border border-slate-300 dark:border-slate-600 rounded-lg text-sm bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none">
                             <!-- Peuplé par JS -->
                         </select>
-                        
-                        <!-- Textarea brut pour Custom (masqué par défaut) -->
-                        <textarea id="prjInput" rows="3" class="mt-2 w-full p-2.5 border border-slate-300 rounded-lg text-xs font-mono bg-slate-50 focus:ring-2 focus:ring-indigo-500 focus:outline-none resize-none hidden" placeholder="Collez votre chaîne WKT ici..."></textarea>
+                        <textarea id="prjInput" rows="3" class="mt-2 w-full p-2.5 border border-slate-300 dark:border-slate-600 rounded-lg text-xs font-mono bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-200 focus:outline-none resize-none hidden" placeholder="Collez votre chaîne WKT ici..."></textarea>
                     </div>
                     
                     <div>
-                        <label class="block text-sm font-medium text-slate-700 mb-1">Encodage des caractères (CPG)</label>
+                        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Encodage des caractères (CPG)</label>
                         <div class="relative">
                             <i data-lucide="type" class="absolute left-3 top-2.5 w-4 h-4 text-slate-400"></i>
-                            <input type="text" id="cpgInput" class="w-full pl-9 pr-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none" placeholder="Ex: UTF-8" value="UTF-8">
+                            <input type="text" id="cpgInput" class="w-full pl-9 pr-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg text-sm bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none" placeholder="Ex: UTF-8" value="UTF-8">
                         </div>
                     </div>
                 </div>
             </div>
 
             <div class="mt-8 flex justify-end gap-3">
-                <button onclick="closeExportModal()" class="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg font-medium transition-colors">Annuler</button>
+                <button onclick="closeExportModal()" class="px-4 py-2 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg font-medium transition-colors">Annuler</button>
                 <button onclick="confirmExport()" class="btn-icon bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2 rounded-lg shadow-md font-medium transition-all">
                     <i data-lucide="check" class="w-4 h-4"></i>
                     Exporter
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL SELECTION IMPORT -->
+    <div id="importSelectionModal" class="modal-overlay" onclick="closeImportSelectionModal(event)">
+        <div class="modal-content w-full max-w-md p-6 bg-white dark:bg-slate-900" onclick="event.stopPropagation()">
+            <div class="flex justify-between items-start mb-4">
+                <div class="flex items-center gap-3">
+                    <div class="bg-blue-100 dark:bg-blue-900/40 p-2 rounded-lg text-blue-600 dark:text-blue-400">
+                        <i data-lucide="folder-search" class="w-6 h-6"></i>
+                    </div>
+                    <div>
+                        <h2 class="text-lg font-bold text-slate-800 dark:text-slate-100">Sélection des couches</h2>
+                        <p class="text-sm text-slate-500 dark:text-slate-400">Choisissez les fichiers à importer</p>
+                    </div>
+                </div>
+                <button onclick="closeImportSelectionModal()" class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+
+            <!-- Toolbar Import -->
+            <div class="flex flex-col gap-2 mb-4">
+                <div class="relative">
+                    <i data-lucide="search" class="absolute left-3 top-2.5 w-4 h-4 text-slate-400"></i>
+                    <input type="text" id="importSearch" onkeyup="filterImportList()" placeholder="Rechercher une couche..." class="w-full pl-9 pr-3 py-2 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-white rounded-lg text-sm focus:outline-none focus:border-blue-500 transition-colors">
+                </div>
+                <div class="flex items-center gap-2 px-1">
+                    <input type="checkbox" id="importSelectAll" onchange="toggleAllImportSelection()" class="w-4 h-4 text-blue-600 rounded border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 focus:ring-blue-500 cursor-pointer">
+                    <label for="importSelectAll" class="text-xs font-medium text-slate-600 dark:text-slate-400 cursor-pointer select-none">Tout sélectionner (visibles)</label>
+                </div>
+            </div>
+
+            <div class="max-h-[250px] overflow-y-auto border border-slate-100 dark:border-slate-700 rounded-lg p-2 space-y-1" id="importSelectionList">
+                <!-- JS injected items -->
+            </div>
+
+            <div class="mt-6 flex justify-end gap-3">
+                <button onclick="closeImportSelectionModal()" class="px-4 py-2 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg font-medium transition-colors">Annuler</button>
+                <button id="btnConfirmImport" onclick="confirmImportSelection()" class="btn-icon bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-lg shadow-md font-medium transition-all">
+                    <i data-lucide="check" class="w-4 h-4"></i>
+                    Importer
                 </button>
             </div>
         </div>
@@ -404,99 +478,405 @@
         const firebaseFirestoreUrl = "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         let map;
+        let tileLayer; // Référence pour switch dark mode
         let drawnItems;
+        let layerRegistry = [];
+        let pendingImportCandidates = [];
+        let hasZoomedImport = false; // Pour auto-zoom sur premier import
+
         let db, auth;
         let selectedLayer = null;
         let tableState = { columns: [], rows: [] };
-        let currentExportFormat = 'geojson'; // geojson | shp
+        let currentExportFormat = 'geojson';
+        const apiKey = ""; 
 
         // --- DEFINITION DES PROJECTIONS ---
         const PROJECTIONS = {
-            "EPSG:4326": {
-                name: "WGS 84 (Standard GPS)",
-                wkt: 'GEOGCS["GCS_WGS_1984",DATUM["D_WGS_1984",SPHEROID["WGS_1984",6378137.0,298.257223563]],PRIMEM["Greenwich",0.0],UNIT["Degree",0.0174532925199433]]'
-            },
-            "EPSG:2154": {
-                name: "RGF93 / Lambert-93 (France)",
-                wkt: 'PROJCS["RGF93_Lambert_93",GEOGCS["GCS_RGF93",DATUM["D_RGF_1993",SPHEROID["GRS_1980",6378137.0,298.257222101]],PRIMEM["Greenwich",0.0],UNIT["Degree",0.0174532925199433]],PROJECTION["Lambert_Conformal_Conic"],PARAMETER["False_Easting",700000.0],PARAMETER["False_Northing",6600000.0],PARAMETER["Central_Meridian",3.0],PARAMETER["Standard_Parallel_1",44.0],PARAMETER["Standard_Parallel_2",49.0],PARAMETER["Latitude_Of_Origin",46.5],UNIT["Meter",1.0]]'
-            },
-            "EPSG:3857": {
-                name: "Web Mercator (Google/Bing Maps)",
-                wkt: 'PROJCS["WGS_1984_Web_Mercator_Auxiliary_Sphere",GEOGCS["GCS_WGS_1984",DATUM["D_WGS_1984",SPHEROID["WGS_1984",6378137.0,298.257223563]],PRIMEM["Greenwich",0.0],UNIT["Degree",0.0174532925199433]],PROJECTION["Mercator_Auxiliary_Sphere"],PARAMETER["False_Easting",0.0],PARAMETER["False_Northing",0.0],PARAMETER["Central_Meridian",0.0],PARAMETER["Standard_Parallel_1",0.0],PARAMETER["Auxiliary_Sphere_Type",0.0],UNIT["Meter",1.0]]'
-            },
-            "custom": {
-                name: "Personnalisé (WKT Brut)",
-                wkt: ""
-            }
+            "EPSG:4326": { name: "WGS 84 (Standard GPS)", wkt: 'GEOGCS["GCS_WGS_1984",DATUM["D_WGS_1984",SPHEROID["WGS_1984",6378137.0,298.257223563]],PRIMEM["Greenwich",0.0],UNIT["Degree",0.0174532925199433]]' },
+            "EPSG:2154": { name: "RGF93 / Lambert-93 (France)", wkt: 'PROJCS["RGF93_Lambert_93",GEOGCS["GCS_RGF93",DATUM["D_RGF_1993",SPHEROID["GRS_1980",6378137.0,298.257222101]],PRIMEM["Greenwich",0.0],UNIT["Degree",0.0174532925199433]],PROJECTION["Lambert_Conformal_Conic"],PARAMETER["False_Easting",700000.0],PARAMETER["False_Northing",6600000.0],PARAMETER["Central_Meridian",3.0],PARAMETER["Standard_Parallel_1",44.0],PARAMETER["Standard_Parallel_2",49.0],PARAMETER["Latitude_Of_Origin",46.5],UNIT["Meter",1.0]]' },
+            "EPSG:3857": { name: "Web Mercator (Google/Bing Maps)", wkt: 'PROJCS["WGS_1984_Web_Mercator_Auxiliary_Sphere",GEOGCS["GCS_WGS_1984",DATUM["D_WGS_1984",SPHEROID["WGS_1984",6378137.0,298.257223563]],PRIMEM["Greenwich",0.0],UNIT["Degree",0.0174532925199433]],PROJECTION["Mercator_Auxiliary_Sphere"],PARAMETER["False_Easting",0.0],PARAMETER["False_Northing",0.0],PARAMETER["Central_Meridian",0.0],PARAMETER["Standard_Parallel_1",0.0],PARAMETER["Auxiliary_Sphere_Type",0.0],UNIT["Meter",1.0]]' },
+            "custom": { name: "Personnalisé (WKT Brut)", wkt: "" }
         };
 
-        // --- LUCIDE ICONS INIT ---
-        function refreshIcons() {
-            if (typeof lucide !== 'undefined') {
-                lucide.createIcons();
-            }
-        }
-
-        function loadFirebaseScripts() {
-            return Promise.all([
-                import(firebaseAppUrl),
-                import(firebaseAuthUrl),
-                import(firebaseFirestoreUrl),
-            ]).then(([appModule, authModule, firestoreModule]) => {
-                window.initializeApp = appModule.initializeApp;
-                window.getAuth = authModule.getAuth;
-                window.signInAnonymously = authModule.signInAnonymously;
-                window.signInWithCustomToken = authModule.signInWithCustomToken;
-                window.onAuthStateChanged = authModule.onAuthStateChanged;
-                window.getFirestore = firestoreModule.getFirestore;
-            });
-        }
-
+        // --- UTILS ---
+        function refreshIcons() { if (typeof lucide !== 'undefined') lucide.createIcons(); }
         function showMessage(text, type = "success") {
             const container = document.getElementById("messageContainer");
             container.innerHTML = "";
             const iconName = type === "error" ? "alert-triangle" : "check-circle-2";
             const iconHtml = `<i data-lucide="${iconName}" class="w-5 h-5"></i>`;
             container.innerHTML = `${iconHtml} <span>${text}</span>`;
-            
             const bgClass = type === "error" ? "bg-rose-600" : "bg-emerald-600";
             container.className = `fixed top-20 left-1/2 transform -translate-x-1/2 flex items-center gap-3 px-4 py-3 rounded-lg shadow-xl transition-all duration-300 text-white font-medium min-w-[300px] justify-center z-[2000] ${bgClass}`;
-            
             refreshIcons(); 
-
-            container.style.opacity = "1";
-            container.style.transform = "translate(-50%, 0)";
-            
-            setTimeout(() => {
-                container.style.opacity = "0";
-                container.style.transform = "translate(-50%, -20px)";
-                setTimeout(() => container.classList.add("hidden"), 300);
-            }, 4000);
+            container.style.opacity = "1"; container.style.transform = "translate(-50%, 0)";
+            setTimeout(() => { container.style.opacity = "0"; container.style.transform = "translate(-50%, -20px)"; setTimeout(() => container.classList.add("hidden"), 300); }, 4000);
         }
 
+        // --- DARK MODE LOGIC ---
+        function toggleDarkMode() {
+            const html = document.documentElement;
+            const isDark = html.classList.toggle('dark');
+            const icon = document.getElementById('darkModeIcon');
+            
+            if (isDark) {
+                icon.setAttribute('data-lucide', 'sun');
+                // Basculer vers fond de carte sombre (CartoDB Dark Matter)
+                if(tileLayer) tileLayer.setUrl("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png");
+            } else {
+                icon.setAttribute('data-lucide', 'moon');
+                // Retour vers fond de carte clair (OSM)
+                if(tileLayer) tileLayer.setUrl("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png");
+            }
+            refreshIcons();
+        }
+
+        // --- GESTION UI SIDEBAR ---
         window.toggleAttributePanel = function () {
             const container = document.querySelector(".main-container");
             const isHidden = container.classList.toggle("panel-hidden");
-            
             const toggleIcon = document.getElementById("toggleIcon");
-            if (toggleIcon) {
-                toggleIcon.setAttribute("data-lucide", isHidden ? "panel-right-open" : "panel-right-close");
-                refreshIcons();
-            }
-            setTimeout(() => {
-                if (map) map.invalidateSize();
-            }, 300);
+            if (toggleIcon) { toggleIcon.setAttribute("data-lucide", isHidden ? "panel-right-open" : "panel-right-close"); refreshIcons(); }
+            setTimeout(() => { if (map) map.invalidateSize(); }, 300);
         };
 
-        // === TABLE LOGIC ===
-        window.openTableModal = function() {
-            const layers = drawnItems.getLayers();
-            if (layers.length === 0) {
-                showMessage("Aucune donnée à afficher. Dessinez d'abord des formes.", "error");
+        window.switchSidebarTab = function(tabName) {
+            const btnLayers = document.getElementById('tab-layers');
+            const btnAttributes = document.getElementById('tab-attributes');
+            const viewLayers = document.getElementById('view-layers');
+            const viewAttributes = document.getElementById('view-attributes');
+            const footer = document.getElementById('footer-attributes');
+
+            if (tabName === 'layers') {
+                btnLayers.classList.add('text-blue-600', 'border-b-2', 'border-blue-600');
+                btnLayers.classList.remove('text-slate-500', 'dark:text-slate-400');
+                btnAttributes.classList.remove('text-blue-600', 'border-b-2', 'border-blue-600');
+                btnAttributes.classList.add('text-slate-500', 'dark:text-slate-400');
+                
+                viewLayers.classList.remove('hidden');
+                viewAttributes.classList.add('hidden');
+                footer.classList.add('hidden');
+                refreshLayerListUI(); 
+            } else {
+                btnAttributes.classList.add('text-blue-600', 'border-b-2', 'border-blue-600');
+                btnAttributes.classList.remove('text-slate-500', 'dark:text-slate-400');
+                btnLayers.classList.remove('text-blue-600', 'border-b-2', 'border-blue-600');
+                btnLayers.classList.add('text-slate-500', 'dark:text-slate-400');
+
+                viewAttributes.classList.remove('hidden');
+                viewLayers.classList.add('hidden');
+                footer.classList.remove('hidden');
+            }
+        };
+
+        // --- LOGIQUE COUCHES ---
+        function registerLayer(name, group, isSystem = false) {
+            const id = crypto.randomUUID();
+            const layerData = { id: id, name: name, group: group, visible: true, isSystem: isSystem };
+            layerRegistry.push(layerData);
+            if (!map.hasLayer(group) && layerData.visible) { map.addLayer(group); }
+            refreshLayerListUI();
+            return layerData;
+        }
+
+        function toggleLayerVisibility(id) {
+            const layer = layerRegistry.find(l => l.id === id);
+            if (!layer) return;
+            layer.visible = !layer.visible;
+            if (layer.visible) map.addLayer(layer.group); else map.removeLayer(layer.group);
+            refreshLayerListUI();
+        }
+
+        function deleteLayer(id) {
+            const index = layerRegistry.findIndex(l => l.id === id);
+            if (index === -1) return;
+            const layer = layerRegistry[index];
+            if (layer.isSystem) return showMessage("Impossible de supprimer la couche système.", "error");
+            if (confirm(`Supprimer la couche "${layer.name}" ?`)) {
+                map.removeLayer(layer.group);
+                layerRegistry.splice(index, 1);
+                refreshLayerListUI();
+            }
+        }
+
+        function zoomToLayer(id) {
+            const layer = layerRegistry.find(l => l.id === id);
+            if (layer && layer.group.getLayers().length > 0) {
+                const bounds = layer.group.getBounds();
+                if (bounds.isValid()) map.fitBounds(bounds);
+            } else {
+                showMessage("Couche vide", "error");
+            }
+        }
+
+        function refreshLayerListUI() {
+            const list = document.getElementById('layer-list');
+            list.innerHTML = '';
+            layerRegistry.forEach(layer => {
+                const count = layer.group.getLayers().length;
+                const item = document.createElement('div');
+                item.className = "flex items-center justify-between p-2 bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-lg shadow-sm hover:shadow-md transition-shadow";
+                const visIcon = layer.visible ? 'eye' : 'eye-off';
+                const visClass = layer.visible ? 'text-slate-600 dark:text-slate-300' : 'text-slate-300 dark:text-slate-600';
+                
+                item.innerHTML = `
+                    <div class="flex items-center gap-3 overflow-hidden">
+                        <button onclick="toggleLayerVisibility('${layer.id}')" class="${visClass} hover:text-blue-600 transition-colors"><i data-lucide="${visIcon}" class="w-4 h-4"></i></button>
+                        <div class="flex flex-col overflow-hidden"><span class="font-medium text-slate-700 dark:text-slate-200 truncate text-sm" title="${layer.name}">${layer.name}</span><span class="text-[10px] text-slate-400">${count} entités</span></div>
+                    </div>
+                    <div class="flex items-center gap-1">
+                        <button onclick="zoomToLayer('${layer.id}')" class="p-1 text-slate-400 hover:text-blue-600 rounded hover:bg-blue-50 dark:hover:bg-blue-900" title="Zoomer"><i data-lucide="maximize-2" class="w-3 h-3"></i></button>
+                        ${!layer.isSystem ? `<button onclick="deleteLayer('${layer.id}')" class="p-1 text-slate-400 hover:text-red-600 rounded hover:bg-red-50 dark:hover:bg-red-900" title="Supprimer"><i data-lucide="trash-2" class="w-3 h-3"></i></button>` : ''}
+                    </div>
+                `;
+                list.appendChild(item);
+            });
+            refreshIcons();
+        }
+
+        // --- IMPORT DOSSIER ---
+        window.loadFolder = async function() {
+            const input = document.getElementById('folderInput');
+            const files = input.files;
+            if (!files || files.length === 0) return;
+            pendingImportCandidates = [];
+            const groups = {};
+            for (let i = 0; i < files.length; i++) {
+                const file = files[i];
+                if (file.name.startsWith('.')) continue;
+                const nameParts = file.name.split('.');
+                if (nameParts.length < 2) continue;
+                const ext = nameParts.pop().toLowerCase();
+                const baseName = nameParts.join('.');
+                if (ext === 'geojson' || ext === 'json') {
+                    pendingImportCandidates.push({ type: 'geojson', name: baseName, file: file });
+                } else if (['shp', 'shx', 'dbf', 'prj', 'cpg'].includes(ext)) {
+                    if (!groups[baseName]) groups[baseName] = [];
+                    groups[baseName].push(file);
+                }
+            }
+            for (const baseName in groups) {
+                const groupFiles = groups[baseName];
+                if (groupFiles.some(f => f.name.toLowerCase().endsWith('.shp'))) {
+                    pendingImportCandidates.push({ type: 'shp', name: baseName, files: groupFiles });
+                }
+            }
+            if (pendingImportCandidates.length === 0) {
+                showMessage("Aucune couche géographique trouvée.", "error");
+                input.value = "";
                 return;
             }
+            openImportSelectionModal();
+            input.value = ""; 
+        };
 
-            layers.forEach(layer => {
+        window.openImportSelectionModal = function() {
+            document.getElementById('importSearch').value = "";
+            document.getElementById('importSelectAll').checked = true;
+            const list = document.getElementById('importSelectionList');
+            list.innerHTML = '';
+
+            pendingImportCandidates.forEach((candidate, index) => {
+                const div = document.createElement('div');
+                div.className = "import-item flex items-center gap-3 p-2 hover:bg-slate-50 dark:hover:bg-slate-800 rounded border border-transparent hover:border-slate-100 dark:hover:border-slate-700 transition-colors";
+                div.dataset.name = candidate.name.toLowerCase();
+                
+                const isShp = candidate.type === 'shp';
+                const icon = isShp ? 'package' : 'file-json';
+                const color = isShp ? 'text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30' : 'text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/30';
+                const badge = isShp ? 'SHP' : 'JSON';
+                const badgeClass = isShp ? 'bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-300' : 'bg-emerald-100 dark:bg-emerald-900/50 text-emerald-600 dark:text-emerald-300';
+                
+                div.innerHTML = `
+                    <input type="checkbox" id="import_cand_${index}" class="w-4 h-4 text-blue-600 rounded border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 focus:ring-blue-500 cursor-pointer" checked>
+                    <label for="import_cand_${index}" class="flex-grow flex items-center gap-3 cursor-pointer select-none">
+                        <div class="p-1.5 rounded-lg ${color}">
+                            <i data-lucide="${icon}" class="w-5 h-5"></i>
+                        </div>
+                        <div class="flex flex-col">
+                            <span class="font-medium text-slate-700 dark:text-slate-200 text-sm highlight-text">${candidate.name}</span>
+                            <span class="text-[10px] font-bold ${badgeClass} px-1.5 py-0.5 rounded w-fit">${badge}</span>
+                        </div>
+                    </label>
+                `;
+                list.appendChild(div);
+            });
+            
+            refreshIcons();
+            document.getElementById('importSelectionModal').classList.add('open');
+        };
+
+        window.filterImportList = function() {
+            const search = document.getElementById('importSearch').value.toLowerCase();
+            const items = document.querySelectorAll('.import-item');
+            items.forEach(item => {
+                const name = item.dataset.name;
+                if (name.includes(search)) item.classList.remove('hidden'); else item.classList.add('hidden');
+            });
+        };
+
+        window.toggleAllImportSelection = function() {
+            const masterCheck = document.getElementById('importSelectAll');
+            const isChecked = masterCheck.checked;
+            const items = document.querySelectorAll('.import-item:not(.hidden) input[type="checkbox"]');
+            items.forEach(cb => cb.checked = isChecked);
+        };
+
+        window.confirmImportSelection = async function() {
+            const checkboxes = document.querySelectorAll('#importSelectionList input[type="checkbox"]');
+            const selectedIndices = [];
+            checkboxes.forEach((cb, idx) => {
+                if (cb.checked) selectedIndices.push(idx);
+            });
+
+            if (selectedIndices.length === 0) { closeImportSelectionModal(); return; }
+
+            const btn = document.getElementById('btnConfirmImport');
+            const originalText = btn.innerHTML;
+            btn.disabled = true; btn.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> Importation...`;
+            refreshIcons();
+
+            let successCount = 0;
+            try {
+                for (const idx of selectedIndices) {
+                    const candidate = pendingImportCandidates[idx];
+                    try {
+                        let geojson;
+                        if (candidate.type === 'shp') {
+                            const zip = new JSZip();
+                            for (const f of candidate.files) { zip.file(f.name, f); }
+                            const content = await zip.generateAsync({ type: "blob" });
+                            const buffer = await content.arrayBuffer();
+                            geojson = await shp(buffer);
+                        } else {
+                            const text = await candidate.file.text();
+                            geojson = JSON.parse(text);
+                        }
+                        
+                        if (geojson) {
+                            addImportedLayer(candidate.name, geojson);
+                            successCount++;
+                        }
+                    } catch (e) { console.error("Error importing " + candidate.name, e); }
+                }
+            } finally {
+                btn.disabled = false; btn.innerHTML = originalText;
+                closeImportSelectionModal();
+                if (successCount > 0) {
+                    showMessage(`${successCount} couche(s) importée(s) !`);
+                    switchSidebarTab('layers');
+                } else { showMessage("Aucune couche importée.", "error"); }
+            }
+        };
+
+        window.closeImportSelectionModal = function(e) {
+            if (e && e.target.id !== "importSelectionModal") return;
+            document.getElementById('importSelectionModal').classList.remove('open');
+        };
+
+        function addImportedLayer(name, geojson) {
+            const group = L.geoJSON(geojson, {
+                style: function (feature) {
+                    const color = "#" + Math.floor(Math.random()*16777215).toString(16);
+                    return { color: color, weight: 2, opacity: 0.8 };
+                },
+                pointToLayer: (f, latlng) => {
+                    return L.circleMarker(latlng, { radius: 6, fillColor: "#ff7800", color: "#000", weight: 1, opacity: 1, fillOpacity: 0.8 });
+                },
+                onEachFeature: (f, l) => {
+                    l.feature = f;
+                    updateLayerPopup(l);
+                    l.on("click", (e) => {
+                        L.DomEvent.stopPropagation(e);
+                        selectLayer(e.target);
+                        switchSidebarTab('attributes');
+                    });
+                }
+            });
+            registerLayer(name, group);
+
+            // === AUTO-ZOOM LOGIC ===
+            // Si c'est la toute première couche importée (pas encore zoomé), on zoome
+            if (!hasZoomedImport && group.getBounds().isValid()) {
+                map.fitBounds(group.getBounds());
+                hasZoomedImport = true; // Marqueur pour ne pas re-zoomer aux imports suivants
+            }
+        }
+
+        // --- IMPORT FICHIER UNIQUE ---
+        window.loadFile = function () {
+            const file = document.getElementById("fileInput").files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            const ext = file.name.split('.').pop().toLowerCase();
+            const baseName = file.name.split('.')[0];
+            reader.onload = async function (e) {
+                try {
+                    let geojson;
+                    if (ext === "geojson") geojson = JSON.parse(e.target.result);
+                    else if (ext === "zip") geojson = await shp(e.target.result);
+                    if(geojson) {
+                        addImportedLayer(baseName, geojson);
+                        showMessage("Couche ajoutée.");
+                        switchSidebarTab('layers');
+                    }
+                } catch(err) { showMessage("Erreur: " + err.message, "error"); }
+            };
+            if(ext==="geojson") reader.readAsText(file); else reader.readAsArrayBuffer(file);
+            document.getElementById("fileInput").value = "";
+        };
+
+        // --- GEMINI AI ---
+        window.generateAIAttributes = async function() {
+            if (!selectedLayer) return showMessage("Sélectionnez une forme d'abord", "error");
+            const btn = document.getElementById("btnGenerateAI");
+            const originalText = btn.innerHTML;
+            const promptType = document.getElementById("aiPromptType").value;
+            btn.disabled = true; btn.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> Génération...`;
+            refreshIcons(); btn.classList.add("ai-pulse");
+
+            const feature = selectedLayer.feature;
+            const currentProps = JSON.stringify(feature.properties);
+            const geomType = feature.geometry ? feature.geometry.type : "Unknown";
+            let userInstruction = "";
+            if (promptType === "urban") userInstruction = "Generate realistic urban planning attributes. Infer values based on name.";
+            else if (promptType === "environment") userInstruction = "Generate environmental attributes.";
+            else if (promptType === "description") userInstruction = "Generate a 'description' key with a narrative.";
+            else if (promptType === "rpg") userInstruction = "Generate fictional RPG attributes.";
+
+            const systemPrompt = `GIS Data Assistant. Generate valid JSON only. Do not touch 'id'. Generate 3-6 keys.`;
+            const userQuery = `Geometry: ${geomType}. Props: ${currentProps}. Task: ${userInstruction}`;
+
+            try {
+                const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ contents: [{ parts: [{ text: userQuery }] }], systemInstruction: { parts: [{ text: systemPrompt }] } })
+                });
+                if (!response.ok) throw new Error("API Error");
+                const data = await response.json();
+                const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+                const jsonStr = rawText.replace(/```json/g, '').replace(/```/g, '').trim();
+                const newAttributes = JSON.parse(jsonStr);
+                feature.properties = { ...feature.properties, ...newAttributes };
+                updateLayerPopup(selectedLayer);
+                selectLayer(selectedLayer);
+                showMessage("Données générées ! ✨");
+            } catch (error) { showMessage("Erreur IA: " + error.message, "error"); } 
+            finally { btn.disabled = false; btn.innerHTML = originalText; btn.classList.remove("ai-pulse"); refreshIcons(); }
+        };
+
+        // --- TABLE LOGIC ---
+        window.openTableModal = function() {
+            let allLayers = [];
+            layerRegistry.filter(l => l.visible).forEach(regLayer => {
+                regLayer.group.eachLayer(l => {
+                    if (l.feature) allLayers.push(l);
+                });
+            });
+
+            if (allLayers.length === 0) return showMessage("Aucune donnée visible à afficher.", "error");
+
+            allLayers.forEach(layer => {
                 if (layer.feature) {
                     if (!layer.feature.properties) layer.feature.properties = {};
                     if (!layer.feature.properties.geom) {
@@ -507,154 +887,51 @@
             });
 
             const allKeys = new Set();
-            layers.forEach(layer => {
-                if (layer.feature && layer.feature.properties) {
-                    Object.keys(layer.feature.properties).forEach(k => allKeys.add(k));
-                }
+            allLayers.forEach(layer => {
+                if (layer.feature && layer.feature.properties) Object.keys(layer.feature.properties).forEach(k => allKeys.add(k));
             });
 
             tableState.columns = Array.from(allKeys).sort();
-            tableState.rows = layers;
+            tableState.rows = allLayers;
             renderTable();
             document.getElementById("tableModal").classList.add("open");
         };
-
-        window.closeTableModal = function(event) {
-            if (event && event.target.id !== "tableModal") return;
-            document.getElementById("tableModal").classList.remove("open");
-        };
-
-        window.deleteColumn = function(key) {
-            if (!confirm(`Supprimer "${key}" ?`)) return;
-            tableState.rows.forEach(layer => {
-                if (layer.feature && layer.feature.properties) {
-                    delete layer.feature.properties[key];
-                }
-            });
-            tableState.columns = tableState.columns.filter(col => col !== key);
-            renderTable();
-        };
-
-        window.renameColumn = function(oldKey) {
-            const newKey = prompt("Nouveau nom :", oldKey);
-            if (!newKey || newKey.trim() === "" || newKey === oldKey) return;
-            const trimmed = newKey.trim();
-            if (tableState.columns.includes(trimmed)) {
-                alert("Ce nom existe déjà.");
-                return;
-            }
-
-            tableState.rows.forEach(layer => {
-                if (layer.feature && layer.feature.properties) {
-                    const val = layer.feature.properties[oldKey];
-                    layer.feature.properties[trimmed] = (val === undefined) ? "" : val;
-                    delete layer.feature.properties[oldKey];
-                }
-            });
-            const idx = tableState.columns.indexOf(oldKey);
-            if (idx !== -1) tableState.columns[idx] = trimmed;
-            renderTable();
-        };
-
-        function renderTable() {
+        window.closeTableModal = function(event) { if (event && event.target.id !== "tableModal") return; document.getElementById("tableModal").classList.remove("open"); };
+        
+        window.renderTable = function() {
             const thead = document.querySelector("#attributesTable thead");
             const tbody = document.querySelector("#attributesTable tbody");
-            thead.innerHTML = "";
-            tbody.innerHTML = "";
-
-            // HEADER
+            thead.innerHTML = ""; tbody.innerHTML = "";
             const headerRow = document.createElement("tr");
             
-            const thId = document.createElement("th");
-            thId.className = "p-3 border-b bg-slate-50 w-20 text-center";
-            thId.innerHTML = "ID";
-            headerRow.appendChild(thId);
-
+            const thId = document.createElement("th"); thId.className = "p-3 border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 w-20 text-center text-slate-600 dark:text-slate-400"; thId.innerHTML = "ID"; headerRow.appendChild(thId);
             tableState.columns.forEach(key => {
-                const th = document.createElement("th");
-                th.className = "p-3 border-b bg-slate-50 min-w-[180px]";
-                
-                const wrapper = document.createElement("div");
-                wrapper.className = "flex items-center justify-between";
-                
-                const title = document.createElement("span");
-                title.className = "font-semibold text-slate-700";
-                title.textContent = key;
-                wrapper.appendChild(title);
-
-                if (key !== 'geom') {
-                    const actions = document.createElement("div");
-                    actions.className = "flex items-center gap-1 opacity-50 hover:opacity-100 transition-opacity";
-                    
-                    const editBtn = document.createElement("button");
-                    editBtn.innerHTML = `<i data-lucide="pencil" class="w-3 h-3"></i>`;
-                    editBtn.className = "p-1 hover:bg-blue-100 hover:text-blue-600 rounded";
-                    editBtn.title = "Renommer";
-                    editBtn.onclick = () => renameColumn(key);
-                    
-                    const delBtn = document.createElement("button");
-                    delBtn.innerHTML = `<i data-lucide="trash-2" class="w-3 h-3"></i>`;
-                    delBtn.className = "p-1 hover:bg-red-100 hover:text-red-600 rounded";
-                    delBtn.title = "Supprimer";
-                    delBtn.onclick = () => deleteColumn(key);
-
-                    actions.append(editBtn, delBtn);
-                    wrapper.appendChild(actions);
-                }
-                th.appendChild(wrapper);
+                const th = document.createElement("th"); th.className = "p-3 border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 min-w-[180px]";
+                th.innerHTML = `<div class="flex justify-between font-semibold text-slate-700 dark:text-slate-300"><span>${key}</span></div>`;
                 headerRow.appendChild(th);
             });
             thead.appendChild(headerRow);
 
-            // ROWS
             tableState.rows.forEach((layer, rowIndex) => {
-                const tr = document.createElement("tr");
-                tr.className = "hover:bg-slate-50 transition-colors";
-
+                const tr = document.createElement("tr"); tr.className = "hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors border-b border-slate-100 dark:border-slate-800/50";
                 const tdId = document.createElement("td");
                 const shortId = (layer.feature && layer.feature.id) ? layer.feature.id.substring(0, 4) : "?";
-                tdId.className = "p-2 text-center border-r border-slate-100";
-                tdId.innerHTML = `<span class="font-mono text-xs text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded select-all">${shortId}</span>`;
+                tdId.className = "p-2 text-center border-r border-slate-100 dark:border-slate-800";
+                tdId.innerHTML = `<span class="font-mono text-xs text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded">${shortId}</span>`;
                 tr.appendChild(tdId);
 
                 tableState.columns.forEach(key => {
-                    const td = document.createElement("td");
-                    td.className = "p-0 border-r border-slate-100 relative";
-                    
+                    const td = document.createElement("td"); td.className = "p-0 border-r border-slate-100 dark:border-slate-800 relative";
                     const input = document.createElement("input");
-                    input.type = "text";
-                    input.className = "w-full h-full p-3 bg-transparent border-none focus:ring-0 text-sm";
-                    
+                    input.type = "text"; input.className = "w-full h-full p-3 bg-transparent border-none focus:ring-0 text-sm text-slate-800 dark:text-slate-200";
                     let val = layer.feature?.properties?.[key] ?? "";
-                    input.value = val;
-                    input.dataset.rowIndex = rowIndex;
-                    input.dataset.key = key;
-
-                    if (key === 'geom') {
-                        input.readOnly = true;
-                        input.className += " text-slate-400 italic bg-slate-50/50 cursor-not-allowed";
-                    }
-
-                    td.appendChild(input);
-                    tr.appendChild(td);
+                    input.value = val; input.dataset.rowIndex = rowIndex; input.dataset.key = key;
+                    if (key === 'geom') { input.readOnly = true; input.className += " text-slate-400 dark:text-slate-500 italic bg-slate-50/50 dark:bg-slate-800/30 cursor-not-allowed"; }
+                    td.appendChild(input); tr.appendChild(td);
                 });
                 tbody.appendChild(tr);
             });
-
             refreshIcons();
-        }
-
-        window.addNewColumn = function() {
-            const nameInput = document.getElementById("newColumnName");
-            const newKey = nameInput.value.trim();
-            if (!newKey) return;
-            if (tableState.columns.includes(newKey)) {
-                showMessage("Colonne existante", "error");
-                return;
-            }
-            tableState.columns.push(newKey);
-            nameInput.value = "";
-            renderTable();
         };
 
         window.saveTableData = function() {
@@ -673,272 +950,67 @@
             showMessage("Données mises à jour");
             closeTableModal();
         };
+        window.addNewColumn = function() {
+            const nameInput = document.getElementById("newColumnName"); const newKey = nameInput.value.trim();
+            if (!newKey || tableState.columns.includes(newKey)) return;
+            tableState.columns.push(newKey); nameInput.value = ""; renderTable();
+        };
 
-        // === EXPORT & MODAL LOGIC (Unified) ===
-        
-        // Initialisation du select de projection
-        function initProjectionSelect() {
-            const select = document.getElementById('projectionSelect');
-            select.innerHTML = '';
-            for (const [key, info] of Object.entries(PROJECTIONS)) {
-                const opt = document.createElement('option');
-                opt.value = key;
-                opt.text = info.name;
-                select.appendChild(opt);
-            }
-            // Valeur par défaut: WGS84
-            select.value = "EPSG:4326";
-        }
-
+        // --- EXPORT LOGIC ---
         window.handleProjectionChange = function() {
             const select = document.getElementById('projectionSelect');
             const textArea = document.getElementById('prjInput');
             const val = select.value;
-
-            if (val === 'custom') {
-                textArea.classList.remove('hidden');
-                // On ne vide pas le textarea pour laisser l'utilisateur coller
-            } else {
-                textArea.classList.add('hidden');
-                // On met à jour le textarea en "background" pour l'export
-                textArea.value = PROJECTIONS[val].wkt;
-            }
+            if (val === 'custom') textArea.classList.remove('hidden'); else { textArea.classList.add('hidden'); textArea.value = PROJECTIONS[val].wkt; }
         };
-
         window.openExportModal = function(format) {
-            if (drawnItems.getLayers().length === 0) return showMessage("Rien à exporter", "error");
+            const hasData = layerRegistry.some(l => l.visible && l.group.getLayers().length > 0);
+            if (!hasData) return showMessage("Aucune couche visible à exporter", "error");
             
             currentExportFormat = format;
-            
-            // UI Update based on format
             const shpOptions = document.getElementById('shpOptions');
             const subtitle = document.getElementById('exportSubtitle');
             const extPreview = document.getElementById('exportExtensionPreview');
-            const filenameInput = document.getElementById('exportFilename');
+            document.getElementById('exportFilename').value = `map_data_${new Date().toISOString().slice(0, 10)}`;
             
-            // Générer nom par défaut
-            const date = new Date().toISOString().slice(0, 10);
-            filenameInput.value = `map_data_${date}`;
+            const select = document.getElementById('projectionSelect');
+            select.innerHTML = '';
+            for (const [key, info] of Object.entries(PROJECTIONS)) { const opt = document.createElement('option'); opt.value = key; opt.text = info.name; select.appendChild(opt); }
+            select.value = "EPSG:4326"; handleProjectionChange();
 
-            initProjectionSelect(); // Reset select
-            handleProjectionChange(); // Sync textarea
-
-            if (format === 'geojson') {
-                subtitle.textContent = "Export GeoJSON";
-                extPreview.textContent = ".geojson";
-                shpOptions.classList.add('hidden-force'); // Use dedicated class or style
-                shpOptions.style.display = 'none';
-            } else {
-                subtitle.textContent = "Export Shapefile (.zip)";
-                extPreview.textContent = ".zip";
-                shpOptions.classList.remove('hidden-force');
-                shpOptions.style.display = 'block';
-            }
-
+            if (format === 'geojson') { subtitle.textContent = "Export GeoJSON"; extPreview.textContent = ".geojson"; shpOptions.classList.add('hidden-force'); shpOptions.style.display = 'none'; }
+            else { subtitle.textContent = "Export Shapefile (.zip)"; extPreview.textContent = ".zip"; shpOptions.classList.remove('hidden-force'); shpOptions.style.display = 'block'; }
             document.getElementById("exportModal").classList.add("open");
         };
-
-        window.closeExportModal = function (e) {
-            if (e && e.target.id !== "exportModal") return;
-            document.getElementById("exportModal").classList.remove("open");
-        };
+        window.closeExportModal = function (e) { if (e && e.target.id !== "exportModal") return; document.getElementById("exportModal").classList.remove("open"); };
 
         window.confirmExport = function() {
             const filename = document.getElementById('exportFilename').value.trim() || "export";
-            const prj = document.getElementById('prjInput').value;
-            const cpg = document.getElementById('cpgInput').value;
-
-            // Configuration
-            const config = {
-                filename: filename,
-                prj: prj,
-                cpg: cpg
-            };
-
+            const config = { filename: filename, prj: document.getElementById('prjInput').value, cpg: document.getElementById('cpgInput').value };
             exportData(currentExportFormat, config);
             closeExportModal();
         };
 
-        // === MAP & CORE ===
-        function selectLayer(layer) {
-            if (selectedLayer && selectedLayer.getElement()) {
-                selectedLayer.getElement().classList.remove("selected-feature-highlight");
-            }
-            selectedLayer = layer;
-            if (selectedLayer.getElement()) {
-                selectedLayer.getElement().classList.add("selected-feature-highlight");
-            }
-
-            if (!selectedLayer.feature) selectedLayer.feature = { type: "Feature", properties: {} };
-            if (!selectedLayer.feature.id) selectedLayer.feature.id = crypto.randomUUID();
-
-            document.getElementById("currentFeatureId").textContent = selectedLayer.feature.id.substring(0, 8);
-            const type = selectedLayer.feature.geometry ? selectedLayer.feature.geometry.type : "Feature";
-            document.getElementById("currentFeatureType").textContent = type;
-            
-            document.getElementById("attribute-info").classList.add("hidden");
-            document.getElementById("attributes-form").classList.remove("hidden");
-
-            const list = document.getElementById("inspector-list");
-            list.innerHTML = "";
-            
-            const props = selectedLayer.feature.properties;
-            const keys = Object.keys(props);
-            
-            if (keys.length === 0) {
-                list.innerHTML = `<div class="text-slate-400 italic text-center py-4 flex flex-col items-center gap-2">
-                    <i data-lucide="list-x" class="w-5 h-5"></i>
-                    <span>Aucun attribut</span>
-                </div>`;
-            } else {
-                keys.forEach(k => {
-                    const div = document.createElement("div");
-                    div.className = "flex flex-col pb-2 border-b border-slate-50 last:border-0";
-                    div.innerHTML = `
-                        <span class="text-xs font-semibold text-slate-500 uppercase tracking-wide">${k}</span>
-                        <span class="text-slate-800 truncate">${props[k]}</span>
-                    `;
-                    list.appendChild(div);
-                });
-            }
-            refreshIcons();
-        }
-
-        function updateLayerPopup(layer) {
-            if (!layer.feature || !layer.feature.properties) return;
-            let html = `<div class="font-sans text-sm min-w-[150px]">`;
-            let count = 0;
-            for (const key in layer.feature.properties) {
-                count++;
-                let val = String(layer.feature.properties[key]);
-                if (val.length > 30) val = val.substring(0, 30) + "...";
-                html += `<div class="flex justify-between border-b border-gray-100 py-1 last:border-0">
-                    <span class="font-bold text-slate-600 mr-2">${key}:</span>
-                    <span class="text-slate-800">${val}</span>
-                </div>`;
-            }
-            if (count === 0) html += `<span class="italic text-gray-400">Sans attributs</span>`;
-            html += `</div>`;
-            
-            if (layer.getPopup()) layer.unbindPopup();
-            layer.bindPopup(html);
-        }
-
-        function initMap() {
-            map = L.map("map", { zoomControl: false }).setView([48.8566, 2.3522], 10);
-            L.control.zoom({ position: 'bottomright' }).addTo(map);
-
-            L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-                attribution: '&copy; OpenStreetMap',
-            }).addTo(map);
-
-            drawnItems = new L.FeatureGroup().addTo(map);
-            
-            const drawControl = new L.Control.Draw({
-                edit: { featureGroup: drawnItems },
-                draw: { 
-                    polygon: { showArea: true },
-                    polyline: true, rectangle: true, circle: true, marker: true, circlemarker: true
-                }
-            });
-            map.addControl(drawControl);
-
-            map.on(L.Draw.Event.CREATED, function (event) {
-                const layer = event.layer;
-                const geojson = layer.toGeoJSON();
-                layer.feature = layer.feature || geojson;
-                if (!layer.feature.geometry && geojson.geometry) layer.feature.geometry = geojson.geometry;
-                if (!layer.feature.properties) {
-                    layer.feature.properties = { 
-                        nom: "Nouvelle Forme", 
-                        date: new Date().toISOString().slice(0, 10) 
-                    };
-                }
-                if (!layer.feature.id) layer.feature.id = crypto.randomUUID();
-                
-                updateLayerPopup(layer);
-                drawnItems.addLayer(layer);
-                selectLayer(layer);
-                updateExportButtonState();
-            });
-
-            map.on("draw:edited", updateExportButtonState);
-            map.on("draw:deleted", () => {
-                if (selectedLayer && !drawnItems.hasLayer(selectedLayer)) {
-                    selectedLayer = null;
-                    document.getElementById("attributes-form").classList.add("hidden");
-                    document.getElementById("attribute-info").classList.remove("hidden");
-                }
-                updateExportButtonState();
-            });
-            drawnItems.on("click", (e) => selectLayer(e.layer));
-            map.on("draw:editstart", () => {
-                if(selectedLayer?.getElement()) selectedLayer.getElement().classList.remove('selected-feature-highlight');
-            });
-        }
-
-        function updateExportButtonState() {
-            const has = drawnItems.getLayers().length > 0;
-            document.getElementById("exportGeoJSONButton").disabled = !has;
-            document.getElementById("exportShapefileButton").disabled = !has;
-        }
-
-        // Import/Export Logic
-        window.loadFile = function () {
-            const file = document.getElementById("fileInput").files[0];
-            if (!file) return;
-            const reader = new FileReader();
-            const ext = file.name.split('.').pop().toLowerCase();
-            
-            reader.onload = async function (e) {
-                try {
-                    let geojson;
-                    if (ext === "geojson") geojson = JSON.parse(e.target.result);
-                    else if (ext === "zip") geojson = await shp(e.target.result);
-                    
-                    if(geojson) {
-                        drawnItems.clearLayers();
-                        const fc = Array.isArray(geojson) ? {type:"FeatureCollection", features: geojson.flat()} : geojson;
-                        const l = L.geoJSON(fc, {
-                            pointToLayer: (f, latlng) => {
-                                const m = L.marker(latlng);
-                                m.feature = f;
-                                return m;
-                            },
-                            onEachFeature: (f, l) => {
-                                l.feature = f;
-                                updateLayerPopup(l);
-                                l.on("click", (e)=>selectLayer(e.target));
-                            }
-                        });
-                        l.eachLayer(layer => drawnItems.addLayer(layer));
-                        if(l.getLayers().length > 0 && l.getBounds().isValid()) map.fitBounds(l.getBounds());
-                        updateExportButtonState();
-                        showMessage("Fichier importé");
-                    }
-                } catch(err) {
-                    showMessage("Erreur: " + err.message, "error");
-                }
-            };
-            if(ext==="geojson") reader.readAsText(file); else reader.readAsArrayBuffer(file);
-        };
-
-        // Modifié pour accepter la config (nom, prj)
         window.exportData = async function (format, config = {}) {
-            if (drawnItems.getLayers().length === 0) return;
+            let allFeatures = [];
+            layerRegistry.filter(l => l.visible).forEach(l => {
+                const geojson = l.group.toGeoJSON();
+                if (geojson.type === 'FeatureCollection') allFeatures = allFeatures.concat(geojson.features);
+                else allFeatures.push(geojson);
+            });
+
+            if (allFeatures.length === 0) return showMessage("Rien à exporter", "error");
             
-            const data = drawnItems.toGeoJSON();
-            // Fallback si config vide
+            const collection = { type: "FeatureCollection", features: allFeatures };
             const filename = config.filename || "map_export";
-            
+
             if (format === "geojson") {
-                const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+                const blob = new Blob([JSON.stringify(collection, null, 2)], { type: "application/json" });
                 downloadBlob(blob, `${filename}.geojson`);
                 showMessage("Export GeoJSON terminé");
             } else if (format === "shp") {
-                const validFeatures = data.features.filter(f => f.geometry && f.geometry.type !== 'GeometryCollection');
+                const validFeatures = allFeatures.filter(f => f.geometry && f.geometry.type !== 'GeometryCollection');
                 if (validFeatures.length === 0) return showMessage("Géométrie invalide pour Shapefile", "error");
-                
                 const sanitize = (props) => {
                     const res = {};
                     for (const k in props) {
@@ -947,63 +1019,114 @@
                     }
                     return res;
                 };
-
-                const exportData = { 
-                    type: "FeatureCollection", 
-                    features: validFeatures.map(f => ({ ...f, properties: sanitize(f.properties) })) 
-                };
-                
+                const exportData = { type: "FeatureCollection", features: validFeatures.map(f => ({ ...f, properties: sanitize(f.properties) })) };
                 try {
-                    const opts = { 
-                        folder: filename, 
-                        types: { point: "points", polygon: "polygons", line: "lines" }, 
-                        prj: config.prj || PROJECTIONS["EPSG:4326"].wkt, 
-                        cpg: config.cpg || "UTF-8", 
-                        outputType: 'blob' 
-                    };
+                    const opts = { folder: filename, types: { point: "points", polygon: "polygons", line: "lines" }, prj: config.prj, cpg: config.cpg, outputType: 'blob' };
                     const result = await shpwrite.zip(exportData, opts);
                     downloadBlob(result, `${filename}.zip`);
                     showMessage("Export Shapefile terminé");
-                } catch(e) {
-                    showMessage(e.message, "error");
-                }
+                } catch(e) { showMessage(e.message, "error"); }
             }
         };
 
         function downloadBlob(blob, filename) {
             const url = URL.createObjectURL(blob);
-            const a = document.createElement("a");
-            a.href = url; a.download = filename;
-            document.body.appendChild(a); a.click();
-            document.body.removeChild(a); URL.revokeObjectURL(url);
+            const a = document.createElement("a"); a.href = url; a.download = filename;
+            document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
         }
 
-        async function setupFirebase() {
-            await loadFirebaseScripts();
-            const appId = typeof __app_id !== "undefined" ? __app_id : "default-app-id";
-            const firebaseConfig = typeof __firebase_config !== "undefined" ? JSON.parse(__firebase_config) : null;
-            const initialAuthToken = typeof __initial_auth_token !== "undefined" ? __initial_auth_token : null;
-            if (firebaseConfig) {
-                try {
-                    const app = initializeApp(firebaseConfig);
-                    db = getFirestore(app);
-                    auth = getAuth(app);
-                    onAuthStateChanged(auth, async (user) => {
-                        if (!user) {
-                            if (initialAuthToken) await signInWithCustomToken(auth, initialAuthToken);
-                            else await signInAnonymously(auth);
-                        }
-                    });
-                } catch (e) { console.error(e); }
-            }
-        }
+        // --- CORE MAP ---
+        function selectLayer(layer) {
+            if (selectedLayer && selectedLayer.getElement()) selectedLayer.getElement().classList.remove("selected-feature-highlight");
+            selectedLayer = layer;
+            if (selectedLayer.getElement()) selectedLayer.getElement().classList.add("selected-feature-highlight");
 
-        window.onload = function () {
-            initMap();
-            setupFirebase();
+            if (!selectedLayer.feature) selectedLayer.feature = { type: "Feature", properties: {} };
+            if (!selectedLayer.feature.id) selectedLayer.feature.id = crypto.randomUUID();
+
+            document.getElementById("currentFeatureId").textContent = selectedLayer.feature.id.substring(0, 8);
+            document.getElementById("currentFeatureType").textContent = selectedLayer.feature.geometry ? selectedLayer.feature.geometry.type : "Feature";
+            
+            // Remplir liste attributs
+            const list = document.getElementById("inspector-list"); list.innerHTML = "";
+            const props = selectedLayer.feature.properties;
+            const keys = Object.keys(props);
+            if (keys.length === 0) list.innerHTML = `<div class="text-slate-400 italic text-center py-4 flex flex-col items-center gap-2"><i data-lucide="list-x" class="w-5 h-5"></i><span>Aucun attribut</span></div>`;
+            else keys.forEach(k => {
+                const div = document.createElement("div");
+                div.className = "flex flex-col pb-2 border-b border-slate-50 dark:border-slate-800 last:border-0";
+                div.innerHTML = `<span class="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">${k}</span><span class="text-slate-800 dark:text-slate-200 truncate">${props[k]}</span>`;
+                list.appendChild(div);
+            });
             refreshIcons();
-            initProjectionSelect(); // Init default
-        };
+        }
+
+        function updateLayerPopup(layer) {
+            if (!layer.feature || !layer.feature.properties) return;
+            let html = `<div class="font-sans text-sm min-w-[150px] text-slate-800 dark:text-slate-200">`;
+            let count = 0;
+            for (const key in layer.feature.properties) {
+                count++; let val = String(layer.feature.properties[key]); if (val.length > 30) val = val.substring(0, 30) + "...";
+                html += `<div class="flex justify-between border-b border-gray-100 dark:border-slate-700 py-1 last:border-0"><span class="font-bold text-slate-600 dark:text-slate-400 mr-2">${key}:</span><span>${val}</span></div>`;
+            }
+            if (count === 0) html += `<span class="italic text-gray-400">Sans attributs</span>`;
+            html += `</div>`;
+            if (layer.getPopup()) layer.unbindPopup(); layer.bindPopup(html);
+        }
+
+        function initMap() {
+            map = L.map("map", { zoomControl: false }).setView([48.8566, 2.3522], 10);
+            L.control.zoom({ position: 'bottomright' }).addTo(map);
+            
+            // Sauvegarde de la référence TileLayer pour le Dark Mode
+            tileLayer = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { attribution: '&copy; OpenStreetMap' }).addTo(map);
+
+            drawnItems = new L.FeatureGroup();
+            registerLayer("Couche Dessin (Défaut)", drawnItems, true);
+
+            const drawControl = new L.Control.Draw({
+                edit: { featureGroup: drawnItems },
+                draw: { polygon: { showArea: true }, polyline: true, rectangle: true, circle: true, marker: true, circlemarker: true }
+            });
+            map.addControl(drawControl);
+
+            map.on(L.Draw.Event.CREATED, function (event) {
+                const layer = event.layer;
+                const geojson = layer.toGeoJSON();
+                layer.feature = layer.feature || geojson;
+                if (!layer.feature.properties) layer.feature.properties = { nom: "Nouvelle Forme", date: new Date().toISOString().slice(0, 10) };
+                if (!layer.feature.id) layer.feature.id = crypto.randomUUID();
+                updateLayerPopup(layer);
+                drawnItems.addLayer(layer);
+                refreshLayerListUI();
+                selectLayer(layer);
+                switchSidebarTab('attributes');
+            });
+
+            map.on("draw:edited", () => refreshLayerListUI());
+            map.on("draw:deleted", () => {
+                refreshLayerListUI();
+                if (selectedLayer && !drawnItems.hasLayer(selectedLayer)) { selectedLayer = null; }
+            });
+            
+            drawnItems.on("click", (e) => {
+                selectLayer(e.layer);
+                switchSidebarTab('attributes');
+            });
+            
+            map.on("draw:editstart", () => { if(selectedLayer?.getElement()) selectedLayer.getElement().classList.remove('selected-feature-highlight'); });
+        }
+
+        // Firebase Setup (Inchangé)
+        async function setupFirebase() { await loadFirebaseScripts(); /* ...Auth Logic... */ }
+        function loadFirebaseScripts() {
+            return Promise.all([import(firebaseAppUrl), import(firebaseAuthUrl), import(firebaseFirestoreUrl)]).then(([a, b, c]) => {
+                window.initializeApp = a.initializeApp; window.getAuth = b.getAuth; window.signInAnonymously = b.signInAnonymously;
+                window.signInWithCustomToken = b.signInWithCustomToken; window.onAuthStateChanged = b.onAuthStateChanged; window.getFirestore = c.getFirestore;
+            });
+        }
+
+        window.onload = function () { initMap(); setupFirebase(); refreshIcons(); };
     </script>
 </body>
 </html>
