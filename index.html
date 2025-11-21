@@ -2,7 +2,8 @@
 <html lang="fr">
 <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <!-- Ajout de interactive-widget=resizes-content pour mieux gérer le clavier virtuel si besoin -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, interactive-widget=resizes-content" />
     <title>Éditeur de Formes Géographiques</title>
 
     <!-- Tailwind CSS & Config -->
@@ -35,16 +36,29 @@
     <style>
         body { font-family: "Inter", sans-serif; overflow: hidden; }
         
-        /* Layout Principal */
-        .main-container { display: flex; height: calc(100vh - 64px); position: relative; overflow: hidden; }
-        #map { width: 100%; height: 100%; z-index: 1; }
+        /* Layout Principal - CORRECTION MOBILE DVH */
+        .main-container { 
+            display: flex; 
+            /* Utilisation de dvh (dynamic viewport height) pour éviter le resize quand la barre d'adresse disparait */
+            height: calc(100dvh - 64px); 
+            position: relative; 
+            overflow: hidden; 
+        }
+        
+        #map { 
+            width: 100%; 
+            height: 100%; 
+            z-index: 1; 
+            /* Empêche le navigateur de gérer le zoom/pan de la page sur la carte */
+            touch-action: none; 
+        }
 
         /* Panneau Latéral (Overlay Mode) */
         #attributes-panel {
             position: absolute; top: 0; bottom: 0; right: 0;
             width: 100%; max-width: 400px;
             background-color: white;
-            z-index: 1000; /* DOIT être inférieur au Header (1100) et aux Modales (1200) */
+            z-index: 1000;
             transform: translateX(0);
             transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
             box-shadow: -4px 0 15px rgba(0, 0, 0, 0.1);
@@ -65,15 +79,18 @@
         /* Toggle Flottant Map */
         #mapInspectorToggle {
             position: absolute; top: 1rem; right: 1rem;
-            z-index: 400; /* Inférieur au panneau et au header */
-            transition: right 0.3s ease;
+            z-index: 400;
+            transition: right 0.3s ease, top 0.3s ease;
+        }
+        @media (max-width: 640px) {
+            #mapInspectorToggle { top: 1.25rem; right: 0.75rem; }
         }
 
         /* Leaflet Overrides */
         .leaflet-container { background-color: #e2e8f0; font-family: "Inter", sans-serif; }
         .dark .leaflet-container { background-color: #1e293b; }
         
-        /* Leaflet Controls Styling */
+        /* Leaflet Controls Styling - Base */
         .leaflet-bar { border: none !important; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06) !important; }
         .leaflet-bar a {
             border-radius: 0.375rem !important; margin-bottom: 4px !important; border-bottom: none !important;
@@ -82,14 +99,59 @@
             line-height: 34px !important;
             transition: all 0.2s;
         }
+        
+        /* --- OPTIMISATION MOBILE / TOUCH RENFORCÉE --- */
+        @media (max-width: 640px) {
+            /* Boutons encore plus visibles et gros */
+            .leaflet-bar {
+                box-shadow: 0 4px 12px rgba(0,0,0,0.25) !important; /* Ombre plus forte */
+                border: 1px solid rgba(0,0,0,0.05) !important;
+            }
+            .leaflet-bar a {
+                width: 48px !important;
+                height: 48px !important;
+                line-height: 48px !important;
+                font-size: 20px;
+                background-color: #ffffff !important; /* Force le blanc pour contraste */
+                color: #0f172a !important;
+            }
+            /* Dark mode spécifique mobile pour les contrôles */
+            .dark .leaflet-bar a {
+                background-color: #1e293b !important;
+                color: #f1f5f9 !important;
+                border: 1px solid #334155 !important;
+            }
+
+            .leaflet-right { margin-right: 0.75rem; }
+            .leaflet-left { margin-left: 0.75rem; }
+            .leaflet-bottom { margin-bottom: 1rem; }
+            
+            /* Draw toolbar icons adjustments */
+            .leaflet-draw-toolbar a {
+                background-size: 24px 24px !important;
+            }
+        }
+
         .leaflet-bar a:hover { background-color: #f1f5f9; color: #2563eb; }
 
         /* --- DARK MODE SPECIFICS FOR DRAWING TOOLS --- */
+        /* On inverse les couleurs pour avoir des icônes blanches sur fond sombre, mais on garde le contrôle sur mobile défini plus haut */
         .dark .leaflet-draw-toolbar a {
             filter: invert(1) hue-rotate(180deg);
             background-color: #e2e8f0;
             border-color: #cbd5e1;
         }
+        /* Reset filter for mobile dark mode to handle custom colors properly if needed, but invert usually works ok unless explicit override */
+        @media (max-width: 640px) {
+             /* Sur mobile on préfère gérer les couleurs explicitement sans invert pour plus de netteté */
+            .dark .leaflet-draw-toolbar a {
+                filter: none;
+                /* On utilise les images de base (noires) mais sur fond sombre elles ne se voient pas... 
+                   L'inversion reste la méthode la plus simple pour les sprites Leaflet Draw par défaut */
+                filter: invert(1) hue-rotate(180deg); 
+            }
+        }
+
         .dark .leaflet-control-zoom a { background-color: #1e293b; color: #e2e8f0; border: 1px solid #334155; }
         .dark .leaflet-control-zoom a:hover { background-color: #334155; }
 
@@ -104,7 +166,7 @@
             background-color: rgba(15, 23, 42, 0.4);
             backdrop-filter: blur(2px);
             display: flex; justify-content: center; align-items: center;
-            z-index: 1200; /* Supérieur au Header (1100) */
+            z-index: 1200;
             opacity: 0; visibility: hidden;
             transition: all 0.2s ease-out;
         }
@@ -507,7 +569,7 @@
                     circle: { tooltip: { start: 'Cliquez et glissez pour le rayon.' }, radius: 'Rayon' },
                     circlemarker: { tooltip: { start: 'Cliquez pour placer.' } },
                     marker: { tooltip: { start: 'Cliquez pour placer.' } },
-                    polygon: { tooltip: { start: 'Cliquez pour commencer.', cont: 'Cliquez pour continuer.', end: 'Cliquez sur le premier point pour fermer.' } },
+                    polygon: { tooltip: { start: 'Cliquez pour commencer.', cont: 'Cliquez pour continuer.', end: 'Cliquez pour fermer.' } },
                     polyline: { error: '<strong>Erreur:</strong> croisement!', tooltip: { start: 'Cliquez pour commencer.', cont: 'Cliquez pour continuer.', end: 'Cliquez sur le dernier point pour finir.' } },
                     rectangle: { tooltip: { start: 'Cliquez et glissez.' } },
                     simpleshape: { tooltip: { end: 'Relâchez pour finir.' } }
@@ -1192,7 +1254,16 @@
             tileLayer = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { attribution: '&copy; OpenStreetMap' }).addTo(map);
             drawnItems = new L.FeatureGroup();
             registerLayer("Couche Dessin (Défaut)", drawnItems, true);
-            const d = new L.Control.Draw({ edit: { featureGroup: drawnItems }, draw: { polygon: { showArea: true }, polyline: true, rectangle: true, circle: true, marker: true, circlemarker: true } });
+            
+            // Initialiser les contrôles de dessin. On ajuste la position si mobile.
+            const isMobile = window.innerWidth <= 640;
+            const drawPosition = isMobile ? 'bottomleft' : 'topleft';
+            
+            const d = new L.Control.Draw({ 
+                edit: { featureGroup: drawnItems }, 
+                draw: { polygon: { showArea: true }, polyline: true, rectangle: true, circle: true, marker: true, circlemarker: true },
+                position: drawPosition 
+            });
             map.addControl(d);
 
             map.on(L.Draw.Event.CREATED, e => {
